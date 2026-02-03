@@ -1081,4 +1081,4 @@ MOCK_MODE=1 pytest exports/your_agent/tests/ -v
 
 ---
 
-**MCP tools generate tests, write them to Python files, and run them via pytest.**
+**MCP tools provide test guidelines, the agent writes tests to Python files, and pytest runs them.**

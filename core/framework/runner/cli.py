@@ -89,6 +89,33 @@ def register_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     validate_parser.set_defaults(func=cmd_validate)
 
+    # dry-run command
+    dryrun_parser = subparsers.add_parser(
+        "dry-run",
+        help="Show execution plan without running",
+        description=(
+            "Preview what an agent would do without executing anything. "
+            "Shows node order, edge conditions, required tools, and complexity metrics."
+        ),
+    )
+    dryrun_parser.add_argument(
+        "agent_path",
+        type=str,
+        help="Path to agent folder (containing agent.json)",
+    )
+    dryrun_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON instead of human-readable format",
+    )
+    dryrun_parser.add_argument(
+        "--output",
+        "-o",
+        type=str,
+        help="Write plan to file instead of stdout",
+    )
+    dryrun_parser.set_defaults(func=cmd_dry_run)
+
     # list command
     list_parser = subparsers.add_parser(
         "list",
@@ -143,6 +170,38 @@ def register_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Only output the final result JSON",
     )
     dispatch_parser.set_defaults(func=cmd_dispatch)
+
+    # summary command
+    summary_parser = subparsers.add_parser(
+        "summary",
+        help="Generate a report from a completed run",
+        description="Export a run as a JSON or Markdown report.",
+    )
+    summary_parser.add_argument(
+        "agent_path",
+        type=str,
+        help="Path to agent folder (to locate storage)",
+    )
+    summary_parser.add_argument(
+        "--run-id",
+        required=True,
+        type=str,
+        help="ID of the run to summarize",
+    )
+    summary_parser.add_argument(
+        "--format",
+        dest="fmt",
+        choices=["json", "markdown"],
+        default="markdown",
+        help="Output format (default: markdown)",
+    )
+    summary_parser.add_argument(
+        "--output",
+        "-o",
+        type=str,
+        help="Write report to file instead of stdout",
+    )
+    summary_parser.set_defaults(func=cmd_summary)
 
     # shell command (interactive agent session)
     shell_parser = subparsers.add_parser(
@@ -409,6 +468,153 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
     runner.cleanup()
     return 0 if validation.valid else 1
+
+
+def cmd_dry_run(args: argparse.Namespace) -> int:
+    """Show execution plan without running the agent."""
+    from framework.runner import AgentRunner
+    from framework.runner.planner import plan_execution
+
+    try:
+        runner = AgentRunner.load(args.agent_path)
+    except FileNotFoundError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    # Generate the execution plan
+    plan = plan_execution(
+        graph=runner.graph,
+        goal=runner.goal,
+        tool_registry=runner._tool_registry,
+    )
+
+    # Format output
+    if args.json:
+        # JSON output mode
+        output_data = {
+            "agent_name": plan.agent_name,
+            "agent_description": plan.agent_description,
+            "goal_name": plan.goal_name,
+            "goal_description": plan.goal_description,
+            "is_valid": plan.is_valid,
+            "validation_errors": plan.validation_errors,
+            "validation_warnings": plan.validation_warnings,
+            "entry_node": plan.entry_node,
+            "terminal_nodes": plan.terminal_nodes,
+            "pause_nodes": plan.pause_nodes,
+            "async_entry_points": plan.async_entry_points,
+            "metrics": {
+                "total_nodes": plan.metrics.total_nodes,
+                "llm_nodes": plan.metrics.llm_nodes,
+                "tool_nodes": plan.metrics.tool_nodes,
+                "router_nodes": plan.metrics.router_nodes,
+                "function_nodes": plan.metrics.function_nodes,
+                "human_input_nodes": plan.metrics.human_input_nodes,
+                "total_edges": plan.metrics.total_edges,
+                "max_path_length": plan.metrics.max_path_length,
+                "has_cycles": plan.metrics.has_cycles,
+                "unique_tools": plan.metrics.unique_tools,
+                "pause_points": plan.metrics.pause_points,
+                "entry_points": plan.metrics.entry_points,
+                "terminal_points": plan.metrics.terminal_points,
+            },
+            "nodes": [
+                {
+                    "id": n.id,
+                    "name": n.name,
+                    "description": n.description,
+                    "node_type": n.node_type,
+                    "input_keys": n.input_keys,
+                    "output_keys": n.output_keys,
+                    "tools": n.tools,
+                    "is_entry": n.is_entry,
+                    "is_terminal": n.is_terminal,
+                    "is_pause": n.is_pause,
+                    "outgoing_edges": [
+                        {
+                            "id": e.id,
+                            "target": e.target,
+                            "condition": e.condition,
+                            "condition_expr": e.condition_expr,
+                        }
+                        for e in n.outgoing_edges
+                    ],
+                }
+                for n in plan.nodes
+            ],
+            "edges": [
+                {
+                    "id": e.id,
+                    "source": e.source,
+                    "target": e.target,
+                    "condition": e.condition,
+                    "condition_expr": e.condition_expr,
+                    "priority": e.priority,
+                    "input_mapping": e.input_mapping,
+                }
+                for e in plan.edges
+            ],
+            "primary_path": {
+                "nodes": plan.primary_path.nodes,
+                "ends_at_terminal": plan.primary_path.ends_at_terminal,
+                "ends_at_pause": plan.primary_path.ends_at_pause,
+                "condition_chain": plan.primary_path.condition_chain,
+            },
+            "alternate_paths": [
+                {
+                    "nodes": p.nodes,
+                    "ends_at_terminal": p.ends_at_terminal,
+                    "ends_at_pause": p.ends_at_pause,
+                    "condition_chain": p.condition_chain,
+                }
+                for p in plan.alternate_paths
+            ],
+        }
+        output_str = json.dumps(output_data, indent=2)
+    else:
+        # Human-readable format
+        output_str = plan.format_readable()
+
+    # Write output
+    if args.output:
+        with open(args.output, "w") as f:
+            f.write(output_str)
+        print(f"Execution plan written to {args.output}")
+    else:
+        print(output_str)
+
+    runner.cleanup()
+    return 0 if plan.is_valid else 1
+
+
+def cmd_summary(args: argparse.Namespace) -> int:
+    """Generate a report from a completed run."""
+    from framework.builder.exporter import RunSummaryExporter
+    from framework.storage.backend import FileStorage
+
+    agent_path = Path(args.agent_path)
+    storage_path = agent_path / ".data"
+    if not storage_path.exists():
+        print(f"No run data found at {storage_path}", file=sys.stderr)
+        return 1
+
+    storage = FileStorage(storage_path)
+    exporter = RunSummaryExporter(storage)
+
+    try:
+        if args.output:
+            exporter.export_to_file(args.run_id, args.output, fmt=args.fmt)
+            print(f"Report written to {args.output}")
+        elif args.fmt == "json":
+            data = exporter.export_json(args.run_id)
+            print(json.dumps(data, indent=2, default=str))
+        else:
+            print(exporter.export_markdown(args.run_id))
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    return 0
 
 
 def cmd_list(args: argparse.Namespace) -> int:

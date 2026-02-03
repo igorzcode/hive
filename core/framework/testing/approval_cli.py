@@ -1,7 +1,7 @@
 """
 Interactive CLI for reviewing and approving generated tests.
 
-LLM-generated tests are NEVER created without user approval.
+Generated tests require user approval before being added to the test suite.
 This CLI provides the interactive approval workflow.
 """
 

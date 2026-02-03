@@ -8,6 +8,7 @@ See: https://docs.litellm.ai/docs/providers
 """
 
 import json
+import logging
 from collections.abc import Callable
 from typing import Any
 
@@ -17,6 +18,10 @@ except ImportError:
     litellm = None
 
 from framework.llm.provider import LLMProvider, LLMResponse, Tool, ToolResult, ToolUse
+from framework.llm.retry import RetryConfig, retry_call
+
+# Logger for LLM operations
+_logger = logging.getLogger("framework.llm.litellm")
 
 
 class LiteLLMProvider(LLMProvider):
@@ -61,6 +66,7 @@ class LiteLLMProvider(LLMProvider):
         model: str = "gpt-4o-mini",
         api_key: str | None = None,
         api_base: str | None = None,
+        retry_config: RetryConfig | None = None,
         **kwargs: Any,
     ):
         """
@@ -73,11 +79,16 @@ class LiteLLMProvider(LLMProvider):
                      look for the appropriate env var (OPENAI_API_KEY,
                      ANTHROPIC_API_KEY, etc.)
             api_base: Custom API base URL (for proxies or local deployments)
+            retry_config: Configuration for retry behavior on transient failures.
+                         If not provided, uses sensible defaults (3 retries with
+                         exponential backoff). Set to RetryConfig(max_retries=0)
+                         to disable retries.
             **kwargs: Additional arguments passed to litellm.completion()
         """
         self.model = model
         self.api_key = api_key
         self.api_base = api_base
+        self.retry_config = retry_config or RetryConfig()
         self.extra_kwargs = kwargs
 
         if litellm is None:
@@ -132,8 +143,13 @@ class LiteLLMProvider(LLMProvider):
         if response_format:
             kwargs["response_format"] = response_format
 
-        # Make the call
-        response = litellm.completion(**kwargs)
+        # Make the call with retry logic for transient failures
+        response = retry_call(
+            litellm.completion,
+            config=self.retry_config,
+            logger=_logger,
+            **kwargs,
+        )
 
         # Extract content
         content = response.choices[0].message.content or ""
@@ -188,7 +204,13 @@ class LiteLLMProvider(LLMProvider):
             if self.api_base:
                 kwargs["api_base"] = self.api_base
 
-            response = litellm.completion(**kwargs)
+            # Make the call with retry logic for transient failures
+            response = retry_call(
+                litellm.completion,
+                config=self.retry_config,
+                logger=_logger,
+                **kwargs,
+            )
 
             # Track tokens
             usage = response.usage

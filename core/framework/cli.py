@@ -5,6 +5,7 @@ Usage:
     python -m core run exports/my-agent --input '{"key": "value"}'
     python -m core info exports/my-agent
     python -m core validate exports/my-agent
+    python -m core dry-run exports/my-agent
     python -m core list exports/
     python -m core dispatch exports/ --input '{"key": "value"}'
     python -m core shell exports/my-agent
@@ -14,6 +15,12 @@ Testing commands:
     python -m core test-debug <goal_id> <test_id>
     python -m core test-list <goal_id>
     python -m core test-stats <goal_id>
+
+Dry-run mode:
+    The dry-run command shows what an agent would do without executing it:
+    python -m core dry-run exports/my-agent
+    python -m core dry-run exports/my-agent --json
+    python -m core dry-run exports/my-agent --output plan.txt
 """
 
 import argparse

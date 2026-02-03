@@ -6,6 +6,7 @@ from typing import Any
 
 from framework.llm.litellm import LiteLLMProvider
 from framework.llm.provider import LLMProvider, LLMResponse, Tool, ToolResult, ToolUse
+from framework.llm.retry import RetryConfig
 
 
 def _get_api_key_from_credential_manager() -> str | None:
@@ -39,6 +40,7 @@ class AnthropicProvider(LLMProvider):
         self,
         api_key: str | None = None,
         model: str = "claude-haiku-4-5-20251001",
+        retry_config: RetryConfig | None = None,
     ):
         """
         Initialize the Anthropic provider.
@@ -47,6 +49,10 @@ class AnthropicProvider(LLMProvider):
             api_key: Anthropic API key. If not provided, uses CredentialManager
                      or ANTHROPIC_API_KEY env var.
             model: Model to use (default: claude-haiku-4-5-20251001)
+            retry_config: Configuration for retry behavior on transient failures.
+                         If not provided, uses sensible defaults (3 retries with
+                         exponential backoff). Set to RetryConfig(max_retries=0)
+                         to disable retries.
         """
         # Delegate to LiteLLMProvider internally.
         self.api_key = api_key or _get_api_key_from_credential_manager()
@@ -56,10 +62,12 @@ class AnthropicProvider(LLMProvider):
             )
 
         self.model = model
+        self.retry_config = retry_config
 
         self._provider = LiteLLMProvider(
             model=model,
             api_key=self.api_key,
+            retry_config=retry_config,
         )
 
     def complete(

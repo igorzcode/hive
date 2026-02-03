@@ -1,8 +1,27 @@
 """LLM provider abstraction."""
 
 from framework.llm.provider import LLMProvider, LLMResponse
+from framework.llm.retry import (
+    MaxRetriesExceededError,
+    RetryableError,
+    RetryConfig,
+    calculate_delay,
+    is_retryable,
+    retry_call,
+    with_retry,
+)
 
-__all__ = ["LLMProvider", "LLMResponse"]
+__all__ = [
+    "LLMProvider",
+    "LLMResponse",
+    "RetryConfig",
+    "RetryableError",
+    "MaxRetriesExceededError",
+    "with_retry",
+    "retry_call",
+    "is_retryable",
+    "calculate_delay",
+]
 
 try:
     from framework.llm.anthropic import AnthropicProvider  # noqa: F401
