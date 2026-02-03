@@ -1,5 +1,6 @@
 """Builder interface for analyzing and building agents."""
 
+from framework.builder.exporter import RunSummaryExporter
 from framework.builder.query import BuilderQuery
 from framework.builder.workflow import (
     BuildPhase,
@@ -12,6 +13,7 @@ from framework.builder.workflow import (
 
 __all__ = [
     "BuilderQuery",
+    "RunSummaryExporter",
     "GraphBuilder",
     "BuildSession",
     "BuildPhase",
